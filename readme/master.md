@@ -31,16 +31,16 @@ A production-grade **distributed rate limiting system** designed for **high-scal
 
 ## 📂 Documentation
 
-* [Phase 1](./docs/phases/phase-1.md)
-* [Phase 2](./docs/phases/phase-2.md)
-* [Phase 3](./docs/phases/phase-3.md)
-* [Phase 4](./docs/phases/phase-4.md)
-* [Phase 5](./docs/phases/phase-5.md)
-* [Phase 6](./docs/phases/phase-6.md)
-* [Phase 7](./docs/phases/phase-7.md)
-* [Phase 8](./docs/phases/phase-8.md)
-* [Phase 9](./docs/phases/phase-9.md)
-* [Phase 10](./docs/phases/phase-10.md)
+* [Phase 1](./phase-1.md)
+* [Phase 2](./phase-2.md)
+* [Phase 3](./phase-3.md)
+* [Phase 4](./phase-4.md)
+* [Phase 5](./phase-5.md)
+* [Phase 6](./phase-6.md)
+* [Phase 7](./phase-7.md)
+* [Phase 8](./phase-8.md)
+* [Phase 9](./phase-9.md)
+* [Phase 10](./phase-10.md)
 
 ---
 
