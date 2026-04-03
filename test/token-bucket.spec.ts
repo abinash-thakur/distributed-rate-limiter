@@ -46,4 +46,14 @@ describe('Token bucket algorithm', () => {
         const result = await service.check(RateLimitAlgorithmEnum.TOKEN_BUCKET, key, 5, 1);
         expect(result.allowed).toBe(true);
     });
+
+    it('uses limit/window as refill rate (2 tokens per 20 seconds)', async () => {
+        const key = 'test:tb:4';
+        await service.check(RateLimitAlgorithmEnum.TOKEN_BUCKET, key, 2, 20);
+        await service.check(RateLimitAlgorithmEnum.TOKEN_BUCKET, key, 2, 20);
+
+        const result = await service.check(RateLimitAlgorithmEnum.TOKEN_BUCKET, key, 2, 20);
+        expect(result.allowed).toBe(false);
+        expect(result.remaining).toBe(0);
+    });
 });

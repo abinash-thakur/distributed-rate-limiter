@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CircuitBreakerService } from '../src/rate-limit/circuit-breaker.service';
+import { MetricsService } from '../src/metrics/metrics.service';
 import { CircuitBreakerConfigEnum } from '../src/utils/enum/circuit-breaker-config.enum';
 import { CircuitBreakerStateEnum } from '../src/utils/enum/circuit-breaker-state.enum';
 
@@ -7,7 +8,7 @@ describe('CircuitBreakerService', () => {
     let service: CircuitBreakerService;
 
     beforeEach(() => {
-        service = new CircuitBreakerService();
+        service = new CircuitBreakerService(new MetricsService());
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-04-03T12:00:00Z'));
     });

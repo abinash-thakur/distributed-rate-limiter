@@ -94,6 +94,35 @@ services:
             ha_net:
                 ipv4_address: 172.28.0.23
 
+    prometheus:
+        image: prom/prometheus:latest
+        ports:
+            - "9090:9090"
+        volumes:
+            - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        depends_on:
+            - app
+        networks:
+            ha_net:
+                ipv4_address: 172.28.0.40
+
+    grafana:
+        image: grafana/grafana:latest
+        ports:
+            - "3001:3000"
+        environment:
+            - GF_SECURITY_ADMIN_USER=admin
+            - GF_SECURITY_ADMIN_PASSWORD=admin
+        volumes:
+            - ./docker/grafana/dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json:ro
+            - ./docker/grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+            - ./docker/grafana/provisioning/datasources/prometheus.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+        depends_on:
+            - prometheus
+        networks:
+            ha_net:
+                ipv4_address: 172.28.0.41
+
 networks:
     ha_net:
         driver: bridge

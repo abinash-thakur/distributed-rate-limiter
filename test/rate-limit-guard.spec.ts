@@ -1,6 +1,7 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MetricsService } from '../src/metrics/metrics.service';
 import { CircuitBreakerService } from '../src/rate-limit/circuit-breaker.service';
 import { RATE_LIMIT_KEY, RateLimitOptions } from '../src/rate-limit/rate-limit.decorator';
 import { RateLimitGuard } from '../src/rate-limit/rate-limit.guard';
@@ -14,6 +15,7 @@ describe('RateLimitGuard', () => {
     let reflector: Reflector;
     let circuitBreaker: CircuitBreakerService;
     let memoryStore: MemoryStoreService;
+    let metricsService: MetricsService;
     let rateLimitService: Pick<RateLimitService, 'check'>;
     let guard: RateLimitGuard;
 
@@ -27,7 +29,8 @@ describe('RateLimitGuard', () => {
         reflector = {
             getAllAndOverride: vi.fn().mockReturnValue(options),
         } as unknown as Reflector;
-        circuitBreaker = new CircuitBreakerService();
+        metricsService = new MetricsService();
+        circuitBreaker = new CircuitBreakerService(metricsService);
         memoryStore = new MemoryStoreService();
         rateLimitService = {
             check: vi.fn(),
@@ -37,6 +40,7 @@ describe('RateLimitGuard', () => {
             reflector,
             circuitBreaker,
             memoryStore,
+            metricsService,
             rateLimitService as RateLimitService,
         );
     });

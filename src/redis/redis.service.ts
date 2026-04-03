@@ -49,7 +49,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        if (this.client.status === 'wait') {
+        if (this.client.status !== 'ready') {
             this.client.disconnect();
             return;
         }
