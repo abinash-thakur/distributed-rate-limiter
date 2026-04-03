@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { MetricsService } from '../metrics/metrics.service';
 import { CircuitBreakerConfigEnum } from '../utils/enum/circuit-breaker-config.enum';
 import { CircuitBreakerStateEnum } from '../utils/enum/circuit-breaker-state.enum';
+import { CircuitBreakerStateMetricEnum } from '../utils/enum/metrics.enum';
 import { MessageEnum } from '../utils/enum/message.enum';
 
 @Injectable()
@@ -14,6 +16,10 @@ export class CircuitBreakerService {
     private readonly failureThreshold = CircuitBreakerConfigEnum.FAILURE_THRESHOLD;
     private readonly recoveryTimeoutMs = CircuitBreakerConfigEnum.RECOVERY_TIMEOUT_MS;
 
+    constructor(private readonly metricsService: MetricsService) {
+        this.updateGauge();
+    }
+
     shouldBypassRedis(): boolean {
         if (this.state === CircuitBreakerStateEnum.OPEN) {
             const elapsed = Date.now() - this.lastFailureTime;
@@ -21,6 +27,7 @@ export class CircuitBreakerService {
             if (elapsed >= this.recoveryTimeoutMs) {
                 this.state = CircuitBreakerStateEnum.HALF_OPEN;
                 this.halfOpenProbeInFlight = false;
+                this.updateGauge();
                 this.logger.log(MessageEnum.CIRCUIT_BREAKER_HALF_OPEN);
             } else {
                 return true;
@@ -45,6 +52,7 @@ export class CircuitBreakerService {
 
         if (this.state !== CircuitBreakerStateEnum.CLOSED) {
             this.state = CircuitBreakerStateEnum.CLOSED;
+            this.updateGauge();
             this.logger.log(MessageEnum.CIRCUIT_BREAKER_CLOSED);
         }
     }
@@ -70,6 +78,17 @@ export class CircuitBreakerService {
     private openCircuit(): void {
         this.state = CircuitBreakerStateEnum.OPEN;
         this.halfOpenProbeInFlight = false;
+        this.updateGauge();
         this.logger.warn(MessageEnum.CIRCUIT_BREAKER_OPEN);
+    }
+
+    private updateGauge(): void {
+        const metricValue = {
+            [CircuitBreakerStateEnum.CLOSED]: CircuitBreakerStateMetricEnum.CLOSED,
+            [CircuitBreakerStateEnum.OPEN]: CircuitBreakerStateMetricEnum.OPEN,
+            [CircuitBreakerStateEnum.HALF_OPEN]: CircuitBreakerStateMetricEnum.HALF_OPEN,
+        }[this.state];
+
+        this.metricsService.circuitState.set(metricValue);
     }
 }

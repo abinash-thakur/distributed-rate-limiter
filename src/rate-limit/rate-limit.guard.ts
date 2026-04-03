@@ -7,11 +7,13 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { FastifyReply, FastifyRequest } from 'fastify';
+import { MetricsService } from '../metrics/metrics.service';
 import { RATE_LIMIT_KEY, RateLimitOptions } from './rate-limit.decorator';
 import { CircuitBreakerService } from './circuit-breaker.service';
 import { MemoryStoreService } from './memory-store.service';
 import { RateLimitService } from './rate-limit.service';
 import { HeaderEnum } from '../utils/enum/header.enum';
+import { MetricsLabelEnum, MetricsResultEnum } from '../utils/enum/metrics.enum';
 import { MessageEnum } from '../utils/enum/message.enum';
 
 @Injectable()
@@ -20,6 +22,7 @@ export class RateLimitGuard implements CanActivate {
         private readonly reflector: Reflector,
         private readonly circuitBreaker: CircuitBreakerService,
         private readonly memoryStore: MemoryStoreService,
+        private readonly metricsService: MetricsService,
         private readonly rateLimitService: RateLimitService,
     ) {}
 
@@ -40,10 +43,15 @@ export class RateLimitGuard implements CanActivate {
         const refillRate = options.limit / options.window;
 
         let result;
+        let usedFallback = false;
 
         if (this.circuitBreaker.shouldBypassRedis()) {
             result = this.memoryStore.check(key, options.limit, refillRate);
+            usedFallback = true;
         } else {
+            const stopRedisTimer = this.metricsService.redisDuration.startTimer({
+                [MetricsLabelEnum.ALGORITHM]: options.algorithm,
+            });
             try {
                 result = await this.rateLimitService.check(
                     options.algorithm,
@@ -55,8 +63,22 @@ export class RateLimitGuard implements CanActivate {
             } catch (error) {
                 this.circuitBreaker.recordFailure();
                 result = this.memoryStore.check(key, options.limit, refillRate);
+                usedFallback = true;
+            } finally {
+                stopRedisTimer();
             }
         }
+
+        if (usedFallback) {
+            this.metricsService.fallbackTotal.inc();
+        }
+
+        this.metricsService.requestsTotal.inc({
+            [MetricsLabelEnum.ALGORITHM]: options.algorithm,
+            [MetricsLabelEnum.RESULT]: result.allowed
+                ? MetricsResultEnum.ALLOWED
+                : MetricsResultEnum.DENIED,
+        });
 
         res.header(HeaderEnum.RATE_LIMIT_LIMIT, options.limit);
         res.header(HeaderEnum.RATE_LIMIT_REMAINING, result.remaining);
