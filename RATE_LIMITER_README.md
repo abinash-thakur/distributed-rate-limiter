@@ -669,7 +669,7 @@ onModuleInit() {
 ## Sentinel Configuration (`docker/redis/sentinel.conf`)
 
 ```conf
-sentinel monitor mymaster redis-primary 6379 2
+sentinel monitor mymaster 172.28.0.10 6379 2
 sentinel down-after-milliseconds mymaster 5000
 sentinel failover-timeout mymaster 10000
 sentinel parallel-syncs mymaster 1
@@ -680,57 +680,126 @@ sentinel parallel-syncs mymaster 1
 ## Docker Compose HA (`docker-compose.ha.yml`)
 
 ```yaml
-version: '3.9'
-
 services:
   app:
     build: .
     ports:
       - "3000:3000"
     environment:
-      - REDIS_SENTINELS=sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
+      - REDIS_SENTINELS=172.28.0.21:26379,172.28.0.22:26379,172.28.0.23:26379
       - REDIS_SENTINEL_NAME=mymaster
+      - NODE_ENV=production
+    restart: unless-stopped
     depends_on:
       - sentinel-1
       - sentinel-2
       - sentinel-3
+    networks:
+      ha_net:
+        ipv4_address: 172.28.0.30
 
   redis-primary:
     image: redis:7-alpine
+    hostname: redis-primary
     command: redis-server
+    restart: unless-stopped
+    networks:
+      ha_net:
+        ipv4_address: 172.28.0.10
 
   redis-replica-1:
     image: redis:7-alpine
-    command: redis-server --replicaof redis-primary 6379
+    hostname: redis-replica-1
+    command: redis-server --replicaof 172.28.0.10 6379
+    restart: unless-stopped
+    depends_on:
+      - redis-primary
+    networks:
+      ha_net:
+        ipv4_address: 172.28.0.11
 
   redis-replica-2:
     image: redis:7-alpine
-    command: redis-server --replicaof redis-primary 6379
+    hostname: redis-replica-2
+    command: redis-server --replicaof 172.28.0.10 6379
+    restart: unless-stopped
+    depends_on:
+      - redis-primary
+    networks:
+      ha_net:
+        ipv4_address: 172.28.0.12
 
   sentinel-1:
     image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
+    command:
+      - sh
+      - -c
+      - cp /etc/redis/sentinel-base.conf /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf
     volumes:
-      - ./docker/redis/sentinel.conf:/etc/redis/sentinel.conf
+      - ./docker/redis/sentinel.conf:/etc/redis/sentinel-base.conf:ro
+    ports:
+      - "26379:26379"
+    restart: unless-stopped
     depends_on:
       - redis-primary
+    networks:
+      ha_net:
+        ipv4_address: 172.28.0.21
 
   sentinel-2:
     image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
+    command:
+      - sh
+      - -c
+      - cp /etc/redis/sentinel-base.conf /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf
     volumes:
-      - ./docker/redis/sentinel.conf:/etc/redis/sentinel.conf
+      - ./docker/redis/sentinel.conf:/etc/redis/sentinel-base.conf:ro
+    restart: unless-stopped
     depends_on:
       - redis-primary
+    networks:
+      ha_net:
+        ipv4_address: 172.28.0.22
 
   sentinel-3:
     image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
+    command:
+      - sh
+      - -c
+      - cp /etc/redis/sentinel-base.conf /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf
     volumes:
-      - ./docker/redis/sentinel.conf:/etc/redis/sentinel.conf
+      - ./docker/redis/sentinel.conf:/etc/redis/sentinel-base.conf:ro
+    restart: unless-stopped
     depends_on:
       - redis-primary
+    networks:
+      ha_net:
+        ipv4_address: 172.28.0.23
+
+networks:
+  ha_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
 ```
+
+---
+
+## Why This Compose File Differs Slightly from the Minimal Example
+
+The original hostname-based Sentinel setup is a good starting point, but in this repo the fully working local demo uses:
+
+- fixed internal IPs for Redis and Sentinel containers
+- a writable runtime Sentinel config inside each container
+- a read-only mounted template config copied into `/tmp` at startup
+
+This avoids two common local Docker issues:
+
+- Sentinels failing to persist topology updates when the config file is bind-mounted directly
+- Sentinels failing over unreliably when the monitored master hostname cannot be resolved after the original container is stopped
+
+Business logic is still unchanged. The only application code change remains the Sentinel-aware Redis client configuration in `redis.service.ts`.
 
 ---
 
@@ -738,19 +807,37 @@ services:
 
 ```bash
 # Start HA setup
-docker-compose -f docker-compose.ha.yml up -d
+docker compose -f docker-compose.ha.yml down -v --remove-orphans
+docker compose -f docker-compose.ha.yml up --build -d
+
+# Confirm the current master before testing
+docker compose -f docker-compose.ha.yml exec sentinel-1 redis-cli -p 26379 SENTINEL master mymaster
 
 # Run continuous load in background
-while true; do curl -s http://localhost:3000/sliding; sleep 0.1; done &
+while true; do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/sliding; sleep 0.25; done
 
 # Kill the primary — this is your demo moment
-docker-compose -f docker-compose.ha.yml stop redis-primary
+docker compose -f docker-compose.ha.yml stop redis-primary
 
-# Watch the app logs — you should see Redis reconnect within ~30s
-docker-compose -f docker-compose.ha.yml logs -f app
+# Watch the app and Sentinel logs during failover
+docker compose -f docker-compose.ha.yml logs -f app
+docker compose -f docker-compose.ha.yml logs -f sentinel-1
+
+# Verify a new master was elected
+docker compose -f docker-compose.ha.yml exec sentinel-1 redis-cli -p 26379 SENTINEL master mymaster
+
+# Start the old primary again so it rejoins as a replica
+docker compose -f docker-compose.ha.yml start redis-primary
+docker compose -f docker-compose.ha.yml exec sentinel-1 redis-cli -p 26379 SENTINEL replicas mymaster
 ```
 
-Expected: API returns errors for ~30 seconds, then automatically recovers with no restart.
+Expected:
+
+- the app stays running throughout the test
+- Sentinel promotes one replica to master
+- the app logs show a brief Redis connection error, then reconnect
+- requests resume without restarting the app
+- when `redis-primary` is started again, it rejoins as a replica instead of taking master back immediately
 
 ---
 
