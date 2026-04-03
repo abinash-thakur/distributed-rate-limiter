@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -9,6 +9,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
     onModuleInit() {
         const sentinelList = process.env.REDIS_SENTINELS;
+        const baseOptions: RedisOptions = {
+            password: process.env.REDIS_PASSWORD,
+            maxRetriesPerRequest: 1,
+            enableOfflineQueue: false,
+            autoResendUnfulfilledCommands: false,
+            connectTimeout: 1_000,
+            lazyConnect: true,
+        };
 
         if (sentinelList) {
             const sentinels = sentinelList.split(',').map((s) => {
@@ -17,16 +25,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
             });
 
             this.client = new Redis({
+                ...baseOptions,
                 sentinels,
                 name: process.env.REDIS_SENTINEL_NAME ?? 'mymaster',
-                password: process.env.REDIS_PASSWORD,
+                sentinelRetryStrategy: (times) => Math.min(times * 50, 500),
+                retryStrategy: (times) => Math.min(times * 50, 500),
             });
         } else {
             this.client = new Redis({
+                ...baseOptions,
                 host: process.env.REDIS_HOST ?? 'localhost',
                 port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
-                password: process.env.REDIS_PASSWORD,
-                lazyConnect: true,
+                retryStrategy: (times) => Math.min(times * 50, 500),
             });
         }
 
@@ -35,6 +45,15 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleDestroy() {
+        if (this.client.status === 'end') {
+            return;
+        }
+
+        if (this.client.status === 'wait') {
+            this.client.disconnect();
+            return;
+        }
+
         await this.client.quit();
     }
 }

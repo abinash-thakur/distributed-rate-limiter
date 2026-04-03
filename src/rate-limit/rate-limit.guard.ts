@@ -8,8 +8,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { RATE_LIMIT_KEY, RateLimitOptions } from './rate-limit.decorator';
+import { CircuitBreakerService } from './circuit-breaker.service';
+import { MemoryStoreService } from './memory-store.service';
 import { RateLimitService } from './rate-limit.service';
-import { RateLimitAlgorithmEnum } from '../utils/enum/rate-limit.enum';
 import { HeaderEnum } from '../utils/enum/header.enum';
 import { MessageEnum } from '../utils/enum/message.enum';
 
@@ -17,6 +18,8 @@ import { MessageEnum } from '../utils/enum/message.enum';
 export class RateLimitGuard implements CanActivate {
     constructor(
         private readonly reflector: Reflector,
+        private readonly circuitBreaker: CircuitBreakerService,
+        private readonly memoryStore: MemoryStoreService,
         private readonly rateLimitService: RateLimitService,
     ) {}
 
@@ -34,13 +37,26 @@ export class RateLimitGuard implements CanActivate {
         const clientId = req.ip;
         const route = (req as any).routerPath ?? req.url;
         const key = `rl:${options.algorithm}:${clientId}:${route}`;
+        const refillRate = options.limit / options.window;
 
-        const result = await this.rateLimitService.check(
-            options.algorithm,
-            key,
-            options.limit,
-            options.window,
-        );
+        let result;
+
+        if (this.circuitBreaker.shouldBypassRedis()) {
+            result = this.memoryStore.check(key, options.limit, refillRate);
+        } else {
+            try {
+                result = await this.rateLimitService.check(
+                    options.algorithm,
+                    key,
+                    options.limit,
+                    options.window,
+                );
+                this.circuitBreaker.recordSuccess();
+            } catch (error) {
+                this.circuitBreaker.recordFailure();
+                result = this.memoryStore.check(key, options.limit, refillRate);
+            }
+        }
 
         res.header(HeaderEnum.RATE_LIMIT_LIMIT, options.limit);
         res.header(HeaderEnum.RATE_LIMIT_REMAINING, result.remaining);
