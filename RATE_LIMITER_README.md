@@ -966,6 +966,26 @@ export class MemoryStoreService {
 
 ---
 
+## Redis Client Behavior Needed for Phase 3
+
+For the circuit breaker to work reliably, Redis calls must fail fast when the full Redis layer is unavailable. If the client keeps retrying internally for too long, the Guard never gets a failure back quickly enough to trip the breaker.
+
+In this repo, the Redis client is configured to fail fast with options like:
+
+```typescript
+{
+  maxRetriesPerRequest: 1,
+  enableOfflineQueue: false,
+  autoResendUnfulfilledCommands: false,
+  connectTimeout: 1000,
+  lazyConnect: true,
+}
+```
+
+With Sentinel enabled, short `retryStrategy` and `sentinelRetryStrategy` delays are also used so the app can enter fallback mode quickly during a full outage.
+
+---
+
 ## Updated Guard with Circuit Breaker
 
 Add these imports and inject both new services into `RateLimitGuard`. Wrap the Redis call:
@@ -997,17 +1017,34 @@ if (this.circuitBreaker.isOpen()) {
 ## Phase 3 Done — Verification Checklist
 
 ```bash
-# Stop all Redis containers
-docker-compose stop redis
+# Start the HA setup cleanly
+docker compose -f docker-compose.ha.yml down -v --remove-orphans
+docker compose -f docker-compose.ha.yml up --build -d
 
-# Keep hitting the API — should still rate limit (not crash, not allow everything)
-for i in $(seq 1 20); do curl -s -w "%{http_code}\n" http://localhost:3000/token; done
+# Watch the app logs
+docker compose -f docker-compose.ha.yml logs -f app
 
-# Restart Redis — circuit should close automatically within 30s
-docker-compose start redis
+# Keep traffic running
+while true; do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/token; sleep 0.25; done
+
+# Stop the entire Redis layer
+docker compose -f docker-compose.ha.yml stop redis-primary redis-replica-1 redis-replica-2 sentinel-1 sentinel-2 sentinel-3
+
+# Bring the full Redis layer back
+docker compose -f docker-compose.ha.yml start redis-primary redis-replica-1 redis-replica-2 sentinel-1 sentinel-2 sentinel-3
 ```
 
-Expected: API returns `200` or `429` (never `500`) even with Redis fully down.
+Expected:
+
+- while all Redis and Sentinel nodes are down, the API still returns only `200` or `429`
+- the app does not crash and does not return `500`
+- app logs show Redis connection errors first
+- after repeated failures, logs show `Circuit breaker: OPEN - switching to in-memory fallback`
+- after Redis comes back and the recovery timeout passes, logs show:
+  - `Circuit breaker: HALF_OPEN - probing Redis`
+  - `Circuit breaker: CLOSED - Redis recovered`
+
+This phase is complete when the app continues rate limiting locally during a full outage and automatically returns to Redis-backed rate limiting after recovery.
 
 ---
 

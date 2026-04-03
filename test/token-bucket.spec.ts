@@ -11,6 +11,7 @@ describe('Token bucket algorithm', () => {
     beforeEach(async () => {
         redis = new RedisService();
         await redis.onModuleInit();
+        await redis.client.connect();
         await redis.client.select(TEST_DB);
         service = new RateLimitService(redis);
         service.onModuleInit();
