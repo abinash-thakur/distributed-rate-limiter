@@ -42,12 +42,15 @@ export class RateLimitService implements OnModuleInit {
         const now = Date.now();
         const script = this.scripts[algorithm];
 
+        const secondArg =
+            algorithm === RateLimitAlgorithmEnum.TOKEN_BUCKET ? limit / window : window;
+
         const result = (await this.redis.client.eval(
             script,
             1,
             key,
             limit,
-            window,
+            secondArg,
             now,
         )) as [number, number, number];
 
