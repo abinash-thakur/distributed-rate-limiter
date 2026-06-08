@@ -43,7 +43,9 @@ describe('Fixed window algorithm', () => {
         for (let i = 0; i < 5; i++) {
             await service.check(RateLimitAlgorithmEnum.FIXED_WINDOW, key, 5, 1);
         }
-        await redis.client.del(key);
+        const denied = await service.check(RateLimitAlgorithmEnum.FIXED_WINDOW, key, 5, 1);
+        expect(denied.allowed).toBe(false);
+        await new Promise((resolve) => setTimeout(resolve, 1_100));
         const result = await service.check(RateLimitAlgorithmEnum.FIXED_WINDOW, key, 5, 1);
         expect(result.allowed).toBe(true);
     });

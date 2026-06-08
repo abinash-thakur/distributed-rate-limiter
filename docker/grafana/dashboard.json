@@ -134,11 +134,11 @@
               },
               {
                 "color": "red",
-                "value": 50
+                "value": 0.05
               }
             ]
           },
-          "unit": "ms"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -168,7 +168,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, algorithm) (rate(rate_limit_redis_duration_ms_bucket[1m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, algorithm) (rate(rate_limit_redis_duration_seconds_bucket[1m])))",
           "legendFormat": "{{algorithm}} p95",
           "range": true,
           "refId": "A"
