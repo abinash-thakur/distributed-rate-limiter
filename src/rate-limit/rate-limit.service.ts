@@ -41,6 +41,8 @@ export class RateLimitService implements OnModuleInit {
     ): Promise<RateLimitResult> {
         const now = Date.now();
         const script = this.scripts[algorithm];
+        const windowOrRefillRate =
+            algorithm === RateLimitAlgorithmEnum.TOKEN_BUCKET ? limit / window : window;
 
         const secondArg =
             algorithm === RateLimitAlgorithmEnum.TOKEN_BUCKET ? limit / window : window;
@@ -50,7 +52,7 @@ export class RateLimitService implements OnModuleInit {
             1,
             key,
             limit,
-            secondArg,
+            windowOrRefillRate,
             now,
         )) as [number, number, number];
 

@@ -12,8 +12,8 @@ end
 if count > limit then
   -- over the limit: remaining is 0, ttl based on key
   local ttl = redis.call('TTL', key)
-  return { 0, 0, now + ttl }
+  return { 0, 0, math.floor(now / 1000) + math.max(ttl, 0) }
 end
 
 local ttl = redis.call('TTL', key)
-return { 1, limit - count, now + ttl }
+return { 1, limit - count, math.floor(now / 1000) + math.max(ttl, 0) }

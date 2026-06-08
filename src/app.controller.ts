@@ -28,7 +28,7 @@ export class AppController {
 
     @Get('/token')
     // 10 tokens per minute (capacity=10, refill ≈0.1667/sec)
-    @RateLimit({ algorithm: RateLimitAlgorithmEnum.TOKEN_BUCKET, limit: 2, window: 60  })
+    @RateLimit({ algorithm: RateLimitAlgorithmEnum.TOKEN_BUCKET, limit: 10, window: 60 })
     token() {
         return { algorithm: RateLimitAlgorithmEnum.TOKEN_BUCKET, message: MessageEnum.REQUEST_ALLOWED };
     }

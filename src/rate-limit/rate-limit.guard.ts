@@ -40,13 +40,17 @@ export class RateLimitGuard implements CanActivate {
         const clientId = req.ip;
         const route = (req as any).routerPath ?? req.url;
         const key = `rl:${options.algorithm}:${clientId}:${route}`;
-        const refillRate = options.limit / options.window;
 
         let result;
         let usedFallback = false;
 
         if (this.circuitBreaker.shouldBypassRedis()) {
-            result = this.memoryStore.check(key, options.limit, refillRate);
+            result = this.memoryStore.check(
+                options.algorithm,
+                key,
+                options.limit,
+                options.window,
+            );
             usedFallback = true;
         } else {
             const stopRedisTimer = this.metricsService.redisDuration.startTimer({
@@ -62,7 +66,12 @@ export class RateLimitGuard implements CanActivate {
                 this.circuitBreaker.recordSuccess();
             } catch (error) {
                 this.circuitBreaker.recordFailure();
-                result = this.memoryStore.check(key, options.limit, refillRate);
+                result = this.memoryStore.check(
+                    options.algorithm,
+                    key,
+                    options.limit,
+                    options.window,
+                );
                 usedFallback = true;
             } finally {
                 stopRedisTimer();
@@ -85,12 +94,14 @@ export class RateLimitGuard implements CanActivate {
         res.header(HeaderEnum.RATE_LIMIT_RESET, result.resetAt);
 
         if (!result.allowed) {
-            res.header(HeaderEnum.RETRY_AFTER, result.resetAt - Math.floor(Date.now() / 1000));
+            const retryAfter = Math.max(result.resetAt - Math.floor(Date.now() / 1000), 0);
+            res.header(HeaderEnum.RETRY_AFTER, retryAfter);
             throw new HttpException(
                 {
                     statusCode: 429,
                     message: MessageEnum.TOO_MANY_REQUESTS,
-                    retryAfter: result.resetAt,
+                    retryAfter,
+                    resetAt: result.resetAt,
                 },
                 HttpStatus.TOO_MANY_REQUESTS,
             );

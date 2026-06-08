@@ -21,7 +21,7 @@ export class MetricsService {
         name: MetricsNameEnum.REDIS_DURATION,
         help: MetricsHelpEnum.REDIS_DURATION,
         labelNames: [MetricsLabelEnum.ALGORITHM],
-        buckets: [1, 2, 5, 10, 25, 50, 100],
+        buckets: [0.001, 0.002, 0.005, 0.01, 0.025, 0.05, 0.1],
         registers: [this.registry],
     });
 
