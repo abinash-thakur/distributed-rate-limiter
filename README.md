@@ -25,24 +25,148 @@ A production-grade, Redis-backed distributed rate limiter built with **NestJS + 
 ## 🏗️ Architecture
 
 ```mermaid
-flowchart TB
-    Client((Client)) --> API[NestJS + Fastify API]
-    API --> Guard[@RateLimit Guard]
+flowchart TD
+    Client(["👤 Client"]) -->|HTTP Request| API["🚀 NestJS API"]
     
-    subgraph Strategies [Rate Limiting Algorithms]
-        Guard --> FW[Fixed Window]
-        Guard --> SW[Sliding Window]
-        Guard --> TB[Token Bucket]
+    subgraph App ["Application Layer"]
+        API --> Guard["🛡️ @RateLimit Guard"]
+        Guard -->|Selects| Algo["⚙️ Rate Limit Strategy\n(Fixed / Sliding / Token)"]
+        Algo --> CB{"🔌 Circuit Breaker"}
+        
+        CB -- "Redis Down" --> Fallback["💾 In-Memory Fallback\n(Algorithm Aware)"]
     end
     
-    FW --> CB{Circuit Breaker}
-    SW --> CB
-    TB --> CB
+    subgraph Infrastructure ["Data & HA Layer"]
+        CB -- "Redis Up" --> Lua["📜 Redis Lua Scripts\n(Atomic Execution)"]
+        Lua --> Primary[("🔴 Redis Primary")]
+        Primary -.-> Replica1[("🔄 Redis Replica 1")]
+        Primary -.-> Replica2[("🔄 Redis Replica 2")]
+    end
     
-    CB -- OPEN / HALF-OPEN --> Fallback[In-Memory Fallback]
-    CB -- CLOSED --> RedisLua(Redis Lua Scripts)
-    
-    RedisLua --> RedisHA[(Redis Sentinel HA)]
-    
-    Prometheus([Prometheus]) -.-> |Scrape /metrics| API
-    Grafana([Grafana]) -.-> Prometheus
+    subgraph Observability ["Observability Stack"]
+        Prometheus(["📈 Prometheus"]) -.->|"Scrapes /metrics"| API
+        Grafana(["📊 Grafana"]) -.->|"Reads"| Prometheus
+    end
+```
+
+---
+
+## 🔬 Algorithm Comparison
+
+| Algorithm | How It Works | Pros | Cons | Best For |
+|---|---|---|---|---|
+| **Fixed Window** | Counts requests in fixed time windows. | Simple, low memory footprint. | Bursts at window boundaries can briefly allow 2× the limit. | Simple API rate limiting. |
+| **Sliding Window** | Tracks individual request timestamps in a sorted set. | Smooth, precise rate enforcement. | Higher memory usage (stores timestamps). | Strict rate enforcement. |
+| **Token Bucket** | Tokens refill at a steady rate; each request consumes a token. | Allows controlled bursts while maintaining average rate. | Slightly more complex state. | APIs needing burst tolerance. |
+
+All three are implemented as **atomic Lua scripts** executed directly on Redis, ensuring thread safety across distributed instances with zero race conditions.
+
+---
+
+## 🛡️ Circuit Breaker
+
+The circuit breaker protects the application from cascading failures during Redis outages:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Closed
+    Closed --> Open : Redis failure threshold reached
+    Open --> HalfOpen : Timeout expires
+    HalfOpen --> Closed : Redis responds successfully
+    HalfOpen --> Open : Redis still down
+```
+
+**Key design decision**: The in-memory fallback is *algorithm-aware*. If your endpoint uses a token bucket strategy, the in-memory fallback will also use token bucket logic (not just a generic counter), ensuring a consistent API contract during outages.
+
+---
+
+## 📡 API Endpoints
+
+| Route | Algorithm | Default Policy |
+|---|---|---|
+| `GET /fixed` | Fixed Window | `10 requests / 60 seconds` |
+| `GET /sliding` | Sliding Window | `10 requests / 60 seconds` |
+| `GET /token` | Token Bucket | `10 tokens / 60 seconds` |
+| `GET /health` | — | Health check |
+| `GET /metrics` | — | Prometheus scrape endpoint |
+
+### Rate-Limit Response Headers
+Every rate-limited response includes standard headers:
+```http
+X-RateLimit-Limit: 10
+X-RateLimit-Remaining: 7
+X-RateLimit-Reset: 1717891200
+Retry-After: 45
+```
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 20+ & npm
+- Docker & Docker Compose
+
+### Option 1: Docker Compose (Recommended)
+
+**Single-node setup** (App + Redis + Prometheus + Grafana):
+```bash
+docker compose up --build
+```
+- App: `http://localhost:3000`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3001` (admin / admin)
+
+**High-Availability setup** (Adds Redis Sentinel cluster):
+```bash
+docker compose -f docker-compose.ha.yml up --build -d
+```
+*Note: You can test failover by running `docker compose -f docker-compose.ha.yml stop redis-primary`.*
+
+### Option 2: Run Directly
+
+```bash
+npm install
+npm run start:dev
+```
+
+---
+
+## 📊 Observability & Testing
+
+### Grafana Dashboard
+The bundled dashboard (`docker/grafana/`) visualizes:
+- Request decisions per second (allowed vs rejected)
+- Redis Lua script latency (p95) by algorithm
+- Circuit breaker state transitions
+- Fallback request rate
+
+### Load Testing with k6
+Validate burst behavior, HTTP headers, and sustained traffic patterns:
+```bash
+# Using Docker (No local installation needed)
+docker run --rm --network host \
+  -v "$PWD/load-test:/scripts" \
+  grafana/k6 run /scripts/rate-limiter.js
+```
+
+---
+
+## 🎯 Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| **Lua scripts over MULTI/EXEC** | Redis transactions don't support conditional logic. Lua runs atomically on the server. |
+| **Fastify over Express** | ~2× higher throughput for the rate-limiter hot path. |
+| **Sentinel over Cluster** | Sentinel provides HA for a single dataset without the complexity of hash-slot sharding. |
+| **Algorithm-aware fallback** | Preserves the API contract even when Redis goes down. |
+
+---
+
+## 📄 License
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+---
+<p align="center">
+  Built by <a href="https://github.com/abinash-thakur">Abinash Thakur</a>
+</p>
