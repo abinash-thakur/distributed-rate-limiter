@@ -158,7 +158,7 @@ A dedicated benchmark (`load-test/benchmark.js`) ramps to **300 concurrent virtu
 k6 run load-test/benchmark.js
 ```
 
-Latest local run (single-node Docker Compose, 90s sustained, 24,090 requests):
+Latest local run (single-node Docker Compose, 60s sustained hold, ~100s total, 24,090 requests):
 
 | Metric | Result |
 |---|---|

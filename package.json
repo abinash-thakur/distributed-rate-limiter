@@ -1,7 +1,7 @@
 {
     "name": "distributed-rate-limiter",
     "version": "0.1.0",
-    "description": "Phase 1: Redis-backed HTTP rate limiter with NestJS + Fastify",
+    "description": "Production-grade distributed rate limiter (NestJS + Fastify + Redis Lua) with fixed-window, sliding-window, and token-bucket algorithms, circuit-breaker fallback, Redis Sentinel HA, and Prometheus/Grafana observability.",
     "main": "dist/main.js",
     "license": "MIT",
     "scripts": {
