@@ -150,21 +150,26 @@ docker run --rm --network host \
   grafana/k6 run /scripts/rate-limiter.js
 ```
 
-#### Sample Results
+#### Benchmark: 300 Concurrent Users
 
-Latest local run (single-node Docker Compose, 511 requests, 2488 checks):
+A dedicated benchmark (`load-test/benchmark.js`) ramps to **300 concurrent virtual users** and holds sustained load for 60s, measuring rate-limiter decision latency:
+
+```bash
+k6 run load-test/benchmark.js
+```
+
+Latest local run (single-node Docker Compose, 90s sustained, 24,090 requests):
 
 | Metric | Result |
 |---|---|
-| **Checks passed** | 100% (2488 / 2488) |
-| **HTTP failures** | 0.00% (0 / 511) |
-| **Rate-limited (429)** | 86.88% (444 / 511) |
-| **Fixed window p(95)** | 6.35 ms |
-| **Sliding window p(95)** | 6.89 ms |
-| **Token bucket p(95)** | 7.24 ms |
-| **Overall p(95) latency** | 7.03 ms |
+| **Concurrent users (VUs)** | 300 |
+| **Requests** | 24,090 (0 failed) |
+| **p90 latency** | 2.00 ms |
+| **p95 latency** | 2.25 ms |
+| **p99 latency** | **2.91 ms** |
+| **avg / max latency** | 1.40 ms / 10.43 ms |
 
-All latency thresholds (`p(95) < 200 ms`), the `http_req_failed < 5%` threshold, and the `http_429_rate > 5%` threshold passed.
+> **p99 < 5 ms at 300 concurrent users.** Numbers are from this repo's `load-test/benchmark.js` and will vary with hardware. The default models real users with ~1s think time; set `THINK=0` for a pure throughput/stress run (which saturates a single Node process at much higher RPS and higher tail latency).
 
 ---
 
