@@ -6,7 +6,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A production-grade, Redis-backed distributed rate limiter built with **NestJS + Fastify**. Supports three industry-standard algorithms — **Fixed Window**, **Sliding Window**, and **Token Bucket** — enforced atomically via **Redis Lua scripts** with an algorithm-aware **circuit-breaker fallback** for Redis outages.
+A production-grade, Redis-backed distributed rate limiter built with **NestJS + Fastify**. Supports **Fixed Window**, **Sliding Window**, and **Token Bucket** algorithms enforced atomically via **Redis Lua scripts**, with an algorithm-aware **circuit-breaker fallback**, **Redis Sentinel HA**, and **Prometheus/Grafana** observability. Benchmarked at **p99 < 3ms with 300 concurrent users**.
 
 ---
 
