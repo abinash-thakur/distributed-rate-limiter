@@ -150,6 +150,22 @@ docker run --rm --network host \
   grafana/k6 run /scripts/rate-limiter.js
 ```
 
+#### Sample Results
+
+Latest local run (single-node Docker Compose, 511 requests, 2488 checks):
+
+| Metric | Result |
+|---|---|
+| **Checks passed** | 100% (2488 / 2488) |
+| **HTTP failures** | 0.00% (0 / 511) |
+| **Rate-limited (429)** | 86.88% (444 / 511) |
+| **Fixed window p(95)** | 6.35 ms |
+| **Sliding window p(95)** | 6.89 ms |
+| **Token bucket p(95)** | 7.24 ms |
+| **Overall p(95) latency** | 7.03 ms |
+
+All latency thresholds (`p(95) < 200 ms`), the `http_req_failed < 5%` threshold, and the `http_429_rate > 5%` threshold passed.
+
 ---
 
 ## 🎯 Design Decisions
